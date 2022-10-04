@@ -11,17 +11,19 @@ breed [ships ship]
 breed [planets planet]
 breed [products product]
 breed [missiles missile]
+breed [harvesters harvester]
 
-products-own [
+turtles-own [
   xvel
   yvel
+]
+
+products-own [
   product-type
   value
 ]
 
 ships-own [
-  xvel
-  yvel
   player?
   fuel
   ship-level
@@ -31,9 +33,14 @@ ships-own [
 missiles-own [
   target
   fuel
-  xvel
-  yvel
 ]
+
+
+harvesters-own [
+  harvest-range
+  owner
+]
+
 
 planets-own [
   gravity
@@ -42,6 +49,7 @@ planets-own [
 
 to setup
   clear-all
+  reset-timer
 
   set thrust-amount 0.0001
   set missile-thrust-amount 0.0000001
@@ -50,7 +58,7 @@ to setup
 
   ;create the player ship
   create-ships 1 [
-    set color red
+    set color blue
     set size 3
     set heading 0
     set player? true
@@ -77,18 +85,24 @@ end
 
 to go
 
+  let j 0
+
   if not any? ships with [player? = true] [stop]
 
   move-ships
   move-products
   move-missiles
+  move-harvesters
   update-scoreboard
 
   if ticks mod 100 = 0 [
     ask missiles [set fuel fuel - 1]
 
     if random 1000 = 1 [
-      launch-product
+      set j random 100
+      if j <= 50 [launch-fuel]
+      if j > 50 and j <= 75 [launch-weapons]
+      if j > 75 [launch-harvester]
       move-computer-ships
     ]
 
@@ -193,7 +207,7 @@ to move-ships
         set fuel fuel + [value] of one-of products in-radius 2
       ]
 
-      if [product-type = "guns"] of one-of products in-radius 2 [
+      if [product-type = "weapons"] of one-of products in-radius 2 [
         set ship-level 2
       ]
 
@@ -208,6 +222,11 @@ to move-ships
       ]
     ]
 
+    if any? harvesters in-radius 2 [
+      capture-harvester self one-of harvesters in-radius 2
+    ]
+
+
     ;check for death
     if player? = true and any? planets in-radius 1 [crash self]
     if player? = true and any? other ships in-radius 1 [crash self]
@@ -218,11 +237,11 @@ to move-ships
 
     ;make sure the shape is correct based on level
     ifelse player? = true [
-      if ship-level = 1 [set shape "default"]
-      if ship-level = 2 [set shape "ship-level2"]
+      if ship-level = 1 and timer > 0.3 [set shape "default"]
+      if ship-level = 2 and timer > 0.3 [set shape "ship-level2"]
     ][
-      if ship-level = 1 [set shape "lander-level1"]
-      if ship-level = 2 [set shape "lander-level2"]
+      if ship-level = 1 and timer > 0.3 [set shape "lander-level1"]
+      if ship-level = 2 and timer > 0.3 [set shape "lander-level2"]
     ]
 
   ]
@@ -269,7 +288,7 @@ to move-products
     ]
 
     if product-type = "fuel" [set label (word "Fuel: " value)]
-    if product-type = "guns" [set label "Weapons"]
+    if product-type = "weapons" [set label "Weapons"]
 
   ]
 end
@@ -373,6 +392,87 @@ to move-missiles
 
 end
 
+to move-harvesters
+  ask harvesters [
+    set xdrift 0
+    set ydrift 0
+    ask planets [
+      if xcor > [xcor] of myself [set xdrift xdrift + gravity]
+      if xcor < [xcor] of myself [set xdrift xdrift - gravity]
+
+      if ycor > [ycor] of myself [set ydrift ydrift + gravity]
+      if ycor < [ycor] of myself [set ydrift ydrift - gravity]
+
+    ]
+
+    set xvel xvel + xdrift
+    set yvel yvel + ydrift
+    setxy (xcor + xvel) (ycor + yvel)
+
+    ;check for edge of world
+    if round(xcor) = max-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor - 1
+    ]
+    if round(xcor) = min-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor + 1
+    ]
+    if round(ycor) = max-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor - 1
+    ]
+    if round(ycor) = min-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor + 1
+    ]
+
+
+    if any? products in-radius harvest-range and ([owner] of self != 0) [
+
+      ;visual graphics of harvesters doing their thing
+      ask patches in-radius harvest-range [set pcolor 49]
+
+      ask products in-radius harvest-range [
+
+        ;harvest fuel
+        if product-type = "fuel" [
+          ask [owner] of myself [
+            set fuel fuel + [value] of myself
+          ]
+        ]
+
+        ;harvest weapons
+        if product-type = "weapons" [
+          ask [owner] of myself [
+            set ship-level 2
+          ]
+        ]
+
+        ;show graphics
+        let j 10
+        repeat 5 [
+          set size j
+          wait 0.1
+          set j j - 1
+        ]
+        die
+
+      ]
+
+      ;reset patch colors
+      ask patches in-radius (harvest-range + 5) [set pcolor black]
+    ]
+  ]
+
+
+end
+
+
 
 
 to thrust
@@ -380,6 +480,9 @@ to thrust
     set xvel xvel + thrust-amount * dx
     set yvel yvel + thrust-amount * dy
     set fuel fuel - 1
+    if ship-level = 1 [set shape "ship-thrusting"]
+    if ship-level = 2 [set shape "ship-level2-thrusting"]
+    reset-timer
   ]
 end
 
@@ -404,57 +507,110 @@ to rotate-counterclockwise
   ]
 end
 
-to launch-product
+to launch-harvester
 
-  ask one-of planets [
-    ask patch-here [
-      sprout-products 1 [
-        set xvel xvel + (random-float 0.001 + 0.0002) * dx
-        set yvel yvel + (random-float 0.001 + 0.0002) * dy
-
-        ;launch a random product
-        let launched-product random 4 + 1
-        if launched-product = 1 [
-          set shape "cloud"
+  if count harvesters <= 5 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-harvesters 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
+          set heading random 360 + 1
+          set shape "factory"
           set size 3
-          set color red
-          set product-type "fuel"
-          set value 5
+          set color grey
+          set harvest-range random 8 + 3
+          set owner 0
+          set label (word "Range: " harvest-range)
         ]
+      ]
+    ]
+  ]
 
-        if launched-product = 2 [
-          set shape "cloud"
-          set size 3
-          set color yellow
-          set product-type "fuel"
-          set value 10
-        ]
+end
 
-        if launched-product = 3 [
-          set shape "cloud"
-          set size 3
-          set color green
-          set product-type "fuel"
-          set value 15
-        ]
 
-        if launched-product = 3 [
-          set shape "cloud"
-          set size 3
-          set color orange
-          set product-type "fuel"
-          set value 30
-        ]
+to launch-weapons
 
-        if launched-product = 4 [
+  if count products <= 10 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-products 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
           set shape "dart"
           set size 3
           set color grey
-          set product-type "guns"
+          set product-type "weapons"
+          set heading random 360 + 1
+          set label "Weapons"
         ]
+      ]
+    ]
+  ]
 
-        if product-type = "fuel" [set label value]
+end
 
+
+to launch-fuel
+
+  if count products <= 10 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-products 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
+
+          ;launch a random product
+          let launched-product random 4 + 1
+          if launched-product = 1 [
+            set shape "cloud"
+            set size 3
+            set color blue
+            set product-type "fuel"
+            set heading random 360 + 1
+            set value 5
+          ]
+
+          if launched-product = 2 [
+            set shape "cloud"
+            set size 3
+            set color green
+            set product-type "fuel"
+            set heading random 360 + 1
+            set value 10
+          ]
+
+          if launched-product = 3 [
+            set shape "cloud"
+            set size 3
+            set color yellow
+            set product-type "fuel"
+            set heading random 360 + 1
+            set value 15
+          ]
+
+          if launched-product = 3 [
+            set shape "cloud"
+            set size 3
+            set color orange
+            set product-type "fuel"
+            set heading random 360 + 1
+            set value 30
+          ]
+
+          if launched-product = 4 [
+            set shape "cloud"
+            set size 3
+            set color red
+            set product-type "fuel"
+            set heading random 360 + 1
+            set value 50
+          ]
+
+         set label value
+
+        ]
       ]
     ]
   ]
@@ -484,6 +640,25 @@ to launch-missile [ship-firing-missile]
 
 end
 
+to capture-harvester [ship-capturing-harvester harvester-being-captured]
+
+  carefully [
+    ask ship-capturing-harvester [
+      if fuel >= 25 [set fuel fuel - 25]
+    ]
+
+    ask harvester-being-captured [
+      set color [color] of ship-capturing-harvester
+      set owner ship-capturing-harvester
+    ]
+  ][]
+
+end
+
+
+
+
+
 
 to game-over [this-ship]
   let j 10
@@ -494,7 +669,13 @@ to game-over [this-ship]
       wait 0.1
       set j j - 1
     ]
-    if player? = false [set game-score game-score + 1]
+    if player? = false [
+      set game-score game-score + 1
+      ask harvesters with [owner = this-ship] [
+        set owner 0
+        set color grey
+      ]
+    ]
     die
   ]
 end
@@ -547,10 +728,10 @@ ticks
 30.0
 
 BUTTON
-876
-58
-941
-91
+848
+153
+913
+186
 Thruster
 thrust
 NIL
@@ -598,10 +779,10 @@ NIL
 1
 
 BUTTON
-941
-58
-996
-91
+913
+153
+968
+186
 Right
 rotate-clockwise
 NIL
@@ -615,10 +796,10 @@ NIL
 1
 
 BUTTON
-822
-58
-877
-91
+794
+153
+849
+186
 Left
 rotate-counterclockwise
 NIL
@@ -632,10 +813,10 @@ NIL
 1
 
 BUTTON
-821
-214
-916
-247
+834
+208
+929
+241
 Fire Missile!
 launch-missile one-of ships with [player? = true]
 NIL
@@ -813,6 +994,26 @@ Circle -16777216 true false 60 75 60
 Circle -16777216 true false 180 75 60
 Polygon -16777216 true false 150 168 90 184 62 210 47 232 67 244 90 220 109 205 150 198 192 205 210 220 227 242 251 229 236 206 212 183
 
+factory
+false
+0
+Rectangle -7500403 true true 76 194 285 270
+Rectangle -7500403 true true 36 95 59 231
+Rectangle -16777216 true false 90 210 270 240
+Line -7500403 true 90 195 90 255
+Line -7500403 true 120 195 120 255
+Line -7500403 true 150 195 150 240
+Line -7500403 true 180 195 180 255
+Line -7500403 true 210 210 210 240
+Line -7500403 true 240 210 240 240
+Line -7500403 true 90 225 270 225
+Circle -1 true false 37 73 32
+Circle -1 true false 55 38 54
+Circle -1 true false 96 21 42
+Circle -1 true false 105 40 32
+Circle -1 true false 129 19 42
+Rectangle -7500403 true true 14 228 78 270
+
 fish
 false
 0
@@ -979,6 +1180,31 @@ Line -2674135 false 90 135 90 30
 Rectangle -2674135 true false 75 75 105 150
 Rectangle -2674135 true false 195 75 225 150
 Line -2674135 false 210 30 210 90
+
+ship-level2-thrusting
+true
+0
+Polygon -7500403 true true 150 5 40 250 150 205 260 250
+Line -2674135 false 90 135 90 30
+Rectangle -2674135 true false 75 75 105 150
+Rectangle -2674135 true false 195 75 225 150
+Line -2674135 false 210 30 210 90
+Line -1 false 75 240 75 270
+Line -1 false 105 240 105 285
+Line -1 false 135 225 135 285
+Line -1 false 165 225 165 285
+Line -1 false 195 240 195 285
+Line -1 false 225 240 225 270
+
+ship-thrusting
+true
+0
+Polygon -7500403 true true 150 5 40 250 150 205 260 250
+Line -1 false 90 240 90 270
+Line -1 false 210 240 210 270
+Line -1 false 120 225 120 285
+Line -1 false 180 225 180 285
+Line -1 false 150 210 150 300
 
 square
 false
