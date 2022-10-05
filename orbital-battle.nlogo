@@ -100,9 +100,9 @@ to go
 
     if random 1000 = 1 [
       set j random 100
-      if j <= 50 [launch-fuel]
-      if j > 50 and j <= 75 [launch-weapons]
-      if j > 75 [launch-harvester]
+      if j <= 80 [launch-fuel]
+      if j > 80 and j <= 90 [launch-weapons]
+      if j > 90 [launch-harvester]
       move-computer-ships
     ]
 
@@ -621,7 +621,7 @@ to launch-missile [ship-firing-missile]
 
   carefully [
     ask ship-firing-missile [
-      if fuel >= 10 [
+      if fuel >= 10 and ship-level > 1 [
         set fuel fuel - 10
         ask patch-here [
           sprout-missiles 1 [
