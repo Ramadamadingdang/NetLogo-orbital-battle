@@ -12,6 +12,8 @@ breed [planets planet]
 breed [products product]
 breed [missiles missile]
 breed [harvesters harvester]
+breed [shields shield]
+
 
 turtles-own [
   xvel
@@ -38,6 +40,10 @@ missiles-own [
 
 harvesters-own [
   harvest-range
+  owner
+]
+
+shields-own [
   owner
 ]
 
@@ -72,12 +78,18 @@ to setup
   create-computer-ship
 
   ;create the planet
-  create-planets 1 [
+  create-planets number-of-planets [
     set size 3
     set shape "circle"
     set gravity 0.00000001
     ;setxy random-xcor random-ycor
+  ]
 
+  ;If multiple planets, randomize their locations
+  if count planets > 1 [
+    ask planets [
+      setxy random-xcor random-ycor
+    ]
   ]
 
   reset-ticks
@@ -93,6 +105,7 @@ to go
   move-products
   move-missiles
   move-harvesters
+  move-shields
   update-scoreboard
 
   if ticks mod 100 = 0 [
@@ -100,9 +113,10 @@ to go
 
     if random 1000 = 1 [
       set j random 100
-      if j <= 80 [launch-fuel]
-      if j > 80 and j <= 90 [launch-weapons]
-      if j > 90 [launch-harvester]
+      if j <= 70 [launch-fuel]
+      if j > 70 and j <= 80 [launch-weapons]
+      if j > 80 [launch-harvester]
+      if j > 90 [launch-shield]
       move-computer-ships
     ]
 
@@ -198,7 +212,7 @@ to move-ships
     ]
 
 
-    ;check for nabing a box
+    ;check for nabing a product
     if any? products in-radius 2 [
       let j 5
 
@@ -224,6 +238,10 @@ to move-ships
 
     if any? harvesters in-radius 2 [
       capture-harvester self one-of harvesters in-radius 2
+    ]
+
+    if any? shields with [owner = 0] in-radius 2 [
+      capture-shield self one-of shields in-radius 2
     ]
 
 
@@ -392,6 +410,58 @@ to move-missiles
 
 end
 
+to move-shields
+
+  ask shields with [owner = 0] [
+    set xdrift 0
+    set ydrift 0
+    ask planets [
+      if xcor > [xcor] of myself [set xdrift xdrift + gravity]
+      if xcor < [xcor] of myself [set xdrift xdrift - gravity]
+
+      if ycor > [ycor] of myself [set ydrift ydrift + gravity]
+      if ycor < [ycor] of myself [set ydrift ydrift - gravity]
+
+    ]
+
+    set xvel xvel + xdrift
+    set yvel yvel + ydrift
+    setxy (xcor + xvel) (ycor + yvel)
+
+    ;check for edge of world
+    if round(xcor) = max-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor - 1
+    ]
+    if round(xcor) = min-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor + 1
+    ]
+    if round(ycor) = max-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor - 1
+    ]
+    if round(ycor) = min-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor + 1
+    ]
+  ]
+
+  ask shields with [owner != 0] [
+    move-to owner
+    set heading [heading] of owner
+  ]
+
+
+end
+
+
+
+
 to move-harvesters
   ask harvesters [
     set xdrift 0
@@ -453,6 +523,7 @@ to move-harvesters
           ]
         ]
 
+
         ;show graphics
         let j 10
         repeat 5 [
@@ -506,6 +577,29 @@ to rotate-counterclockwise
     set heading heading - rotation-amount
   ]
 end
+
+to launch-shield
+
+  if count shields with [owner = 0] <= 5 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-shields 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
+          set heading random 360 + 1
+          set shape "shield"
+          set label "Shield"
+          set size 4
+          set color grey
+          set owner 0
+        ]
+      ]
+    ]
+  ]
+
+
+end
+
 
 to launch-harvester
 
@@ -640,6 +734,20 @@ to launch-missile [ship-firing-missile]
 
 end
 
+to capture-shield [ship-capturing-shield shield-being-captured]
+
+  if not any? shields with [owner = ship-capturing-shield] [
+    ask shield-being-captured [
+      set color [color] of ship-capturing-shield
+      set owner ship-capturing-shield
+      set label ""
+    ]
+  ]
+
+end
+
+
+
 to capture-harvester [ship-capturing-harvester harvester-being-captured]
 
   carefully [
@@ -684,19 +792,16 @@ to crash [this-ship]
   let j 5
 
   ask this-ship [
-    print "Crash!"
-    if ship-level <= 1 [game-over self]
-
-    if ship-level > 1 [
+    ifelse any? shields with [owner = this-ship] [
       repeat 5 [
         set size j
         wait 0.1
         set j j - 1
       ]
       set size 3
-      set ship-level ship-level - 1
+      ask shields with [owner = this-ship] [die]
       fd 3
-    ]
+    ][game-over self]
   ]
 end
 @#$#@#$#@
@@ -828,6 +933,21 @@ F
 NIL
 NIL
 1
+
+SLIDER
+823
+63
+1013
+96
+number-of-planets
+number-of-planets
+1
+5
+5.0
+1
+1
+planet
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1171,6 +1291,11 @@ Rectangle -1 true true 65 221 80 296
 Polygon -1 true true 195 285 210 285 210 240 240 210 195 210
 Polygon -7500403 true false 276 85 285 105 302 99 294 83
 Polygon -7500403 true false 219 85 210 105 193 99 201 83
+
+shield
+true
+0
+Polygon -1184463 true false 30 150 105 15 195 15 285 150 255 150 180 30 120 30 60 150
 
 ship-level2
 true
