@@ -13,11 +13,20 @@ breed [products product]
 breed [missiles missile]
 breed [harvesters harvester]
 breed [shields shield]
+breed [orbital-computers orbital-computer]
+breed [courses course]
+breed [autonavs autonav]
+
 
 
 turtles-own [
   xvel
   yvel
+]
+
+courses-own [
+  owner
+  course-timer
 ]
 
 products-own [
@@ -30,13 +39,13 @@ ships-own [
   fuel
   ship-level
   autonav?
+  orbital-computer?
 ]
 
 missiles-own [
   target
   fuel
 ]
-
 
 harvesters-own [
   harvest-range
@@ -47,6 +56,13 @@ shields-own [
   owner
 ]
 
+orbital-computers-own [
+  owner
+]
+
+autonavs-own [
+  owner
+]
 
 planets-own [
   gravity
@@ -72,6 +88,7 @@ to setup
     set label fuel
     set ship-level 1
     set autonav? false
+    set orbital-computer? false
     setxy random-xcor random-ycor
   ]
 
@@ -101,40 +118,70 @@ to go
 
   if not any? ships with [player? = true] [stop]
 
-  move-ships
-  move-products
-  move-missiles
-  move-harvesters
-  move-shields
-  update-scoreboard
+  if count courses = 0 [
+    move-ships
+    move-products
+    move-missiles
+    move-harvesters
+    move-shields
+    move-orbital-computers
+    move-autonavs
 
-  if ticks mod 100 = 0 [
-    ask missiles [set fuel fuel - 1]
+    update-scoreboard
 
-    if random 1000 = 1 [
-      set j random 100
-      if j <= 70 [launch-fuel]
-      if j > 70 and j <= 80 [launch-weapons]
-      if j > 80 [launch-harvester]
-      if j > 90 [launch-shield]
-      move-computer-ships
-    ]
+    if ticks mod 100 = 0 [
+      ask missiles [set fuel fuel - 1]
 
-    ;check to see if all the ships have been killed off.  If so, spawn a few more
-    if not any? ships with [player? = false] and random 500 = 1 [
-      repeat random 2 + 1 [
-        create-computer-ship
+      if random 1000 = 1 [
+        set j random 11 + 1
+        print j
+        if j <= 6 [launch-fuel]
+        if j = 7 [launch-weapons]
+        if j = 8 [launch-harvester]
+        if j = 9 [launch-shield]
+        if j = 10 [launch-orbital-computer]
+        if j = 11 [launch-autonav]
+        move-computer-ships
       ]
-    ]
 
-    reset-ticks
+      ;check to see if all the ships have been killed off.  If so, spawn a few more
+      if not any? ships with [player? = false] and random 500 = 1 [
+        repeat random 2 + 1 [
+          create-computer-ship
+        ]
+      ]
+
+      reset-ticks
+    ]
   ]
+
+  if count courses > 0 [move-courses]
+
+  update-scoreboard
 
   tick
 end
 
 to update-scoreboard
-  ask patch 0 48 [set plabel (word "SCORE: " game-score)]
+
+  ;score
+  ask patch 49 48 [set plabel (word "SCORE: " game-score)]
+
+  ;Autonav computer
+  if any? ships with [player? = true and autonav? = true] [
+    ask patch -35 48 [set plabel "AUTONAV ONLINE"]
+  ]
+
+  ;orbital computer
+  if any? ships with [player? = true and orbital-computer? = true] [
+    ask patch -10 48 [set plabel "ORBITAL COMPUTER READY"]
+  ]
+
+  ;weapons
+  if any? ships with [player? = true and ship-level = 2] [
+    ask patch 10 48 [set plabel "WEAPONS ARMED"]
+  ]
+
 end
 
 to create-computer-ship
@@ -243,6 +290,15 @@ to move-ships
     if any? shields with [owner = 0] in-radius 2 [
       capture-shield self one-of shields in-radius 2
     ]
+
+    if any? orbital-computers with [owner = 0] in-radius 2 [
+      capture-orbital-computer self one-of orbital-computers in-radius 2
+    ]
+
+    if any? autonavs with [owner = 0] in-radius 2 [
+      capture-autonavs self one-of autonavs in-radius 2
+    ]
+
 
 
     ;check for death
@@ -459,6 +515,92 @@ to move-shields
 
 end
 
+to move-orbital-computers
+
+  ask orbital-computers with [owner = 0] [
+    set xdrift 0
+    set ydrift 0
+    ask planets [
+      if xcor > [xcor] of myself [set xdrift xdrift + gravity]
+      if xcor < [xcor] of myself [set xdrift xdrift - gravity]
+
+      if ycor > [ycor] of myself [set ydrift ydrift + gravity]
+      if ycor < [ycor] of myself [set ydrift ydrift - gravity]
+
+    ]
+
+    set xvel xvel + xdrift
+    set yvel yvel + ydrift
+    setxy (xcor + xvel) (ycor + yvel)
+
+    ;check for edge of world
+    if round(xcor) = max-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor - 1
+    ]
+    if round(xcor) = min-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor + 1
+    ]
+    if round(ycor) = max-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor - 1
+    ]
+    if round(ycor) = min-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor + 1
+    ]
+  ]
+
+end
+
+to move-autonavs
+
+  ask autonavs with [owner = 0] [
+    set xdrift 0
+    set ydrift 0
+    ask planets [
+      if xcor > [xcor] of myself [set xdrift xdrift + gravity]
+      if xcor < [xcor] of myself [set xdrift xdrift - gravity]
+
+      if ycor > [ycor] of myself [set ydrift ydrift + gravity]
+      if ycor < [ycor] of myself [set ydrift ydrift - gravity]
+
+    ]
+
+    set xvel xvel + xdrift
+    set yvel yvel + ydrift
+    setxy (xcor + xvel) (ycor + yvel)
+
+    ;check for edge of world
+    if round(xcor) = max-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor - 1
+    ]
+    if round(xcor) = min-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor + 1
+    ]
+    if round(ycor) = max-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor - 1
+    ]
+    if round(ycor) = min-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor + 1
+    ]
+  ]
+
+end
+
 
 
 
@@ -502,7 +644,7 @@ to move-harvesters
     ]
 
 
-    if any? products in-radius harvest-range and ([owner] of self != 0) [
+    if any? products with [product-type = "fuel"] in-radius harvest-range and ([owner] of self != 0) [
 
       ;visual graphics of harvesters doing their thing
       ask patches in-radius harvest-range [set pcolor 49]
@@ -516,12 +658,6 @@ to move-harvesters
           ]
         ]
 
-        ;harvest weapons
-        if product-type = "weapons" [
-          ask [owner] of myself [
-            set ship-level 2
-          ]
-        ]
 
 
         ;show graphics
@@ -540,8 +676,86 @@ to move-harvesters
     ]
   ]
 
+end
+
+to move-courses
+
+  ask courses with [course-timer > 0] [
+    set xdrift 0
+    set ydrift 0
+    ask planets [
+      if xcor > [xcor] of myself [set xdrift xdrift + gravity]
+      if xcor < [xcor] of myself [set xdrift xdrift - gravity]
+
+      if ycor > [ycor] of myself [set ydrift ydrift + gravity]
+      if ycor < [ycor] of myself [set ydrift ydrift - gravity]
+
+    ]
+
+    set xvel xvel + xdrift
+    set yvel yvel + ydrift
+    setxy (xcor + xvel) (ycor + yvel)
+
+    ;check for edge of world
+    if round(xcor) = max-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor - 1
+    ]
+    if round(xcor) = min-pxcor [
+      set xvel 0
+      set yvel 0
+      set xcor xcor + 1
+    ]
+    if round(ycor) = max-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor - 1
+    ]
+    if round(ycor) = min-pycor [
+      set xvel 0
+      set yvel 0
+      set ycor ycor + 1
+    ]
+
+    set course-timer course-timer - 1
+  ]
+
+  ;kill courses with no fuel left
+  ask courses with [course-timer < 1] [die]
+
+  ;clear drawing if no courses remain
+  if count courses = 0 [clear-drawing]
 
 end
+
+to calculate-courses
+
+  ifelse any? ships with [player? = true and fuel > 0 and orbital-computer? = true and count courses = 0] [
+
+    ask ships with [player? = true] [
+      set fuel fuel - 1
+    ]
+
+    ask turtles with [breed != planets] [
+      ask patch-here [
+        sprout-courses 1 [
+          set shape "dot"
+          set course-timer 200000
+          set owner one-of turtles-here
+          set xvel [xvel] of owner
+          set yvel [yvel] of owner
+          set heading [heading] of owner
+          pen-down
+        ]
+      ]
+    ]
+  ][
+    user-message "You need an orbital computer and at least 1 fuel to calculate courses.  Also, you cannot calculate course if you are already calculating courses."
+  ]
+
+end
+
 
 
 
@@ -577,6 +791,53 @@ to rotate-counterclockwise
     set heading heading - rotation-amount
   ]
 end
+
+
+
+
+to launch-orbital-computer
+
+  if count orbital-computers with [owner = 0] <= 5 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-orbital-computers 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
+          set heading random 360 + 1
+          set shape "orbital-computer"
+          set label "Orbital Computer"
+          set size 4
+          set color grey
+          set owner 0
+        ]
+      ]
+    ]
+  ]
+
+end
+
+to launch-autonav
+
+  if count autonavs with [owner = 0] = 0 [
+    ask one-of planets [
+      ask patch-here [
+        sprout-autonavs 1 [
+          set xvel xvel + (random-float 0.001 + 0.0002) * dx
+          set yvel yvel + (random-float 0.001 + 0.0002) * dy
+          set heading random 360 + 1
+          set shape "target"
+          set label "AutoNav"
+          set size 4
+          set color grey
+          set owner 0
+        ]
+      ]
+    ]
+  ]
+
+end
+
+
 
 to launch-shield
 
@@ -715,7 +976,7 @@ to launch-missile [ship-firing-missile]
 
   carefully [
     ask ship-firing-missile [
-      if fuel >= 10 and ship-level > 1 [
+      ifelse fuel >= 10 and ship-level > 1 [
         set fuel fuel - 10
         ask patch-here [
           sprout-missiles 1 [
@@ -728,11 +989,38 @@ to launch-missile [ship-firing-missile]
             set target one-of ships with [who != [who] of ship-firing-missile]
           ]
         ]
+      ] [
+        user-message "You need weapons on your ship and at least 10 fuel to launch a missile."
       ]
     ]
   ][]
 
 end
+
+to capture-orbital-computer [ship-capturing-orbital-computer orbital-computer-being-captured]
+
+  if not any? orbital-computers with [owner = ship-capturing-orbital-computer] [
+    ask orbital-computer-being-captured [die]
+    ask ship-capturing-orbital-computer [set orbital-computer? true]
+    if [player? = true] of ship-capturing-orbital-computer [
+      user-message "You may now calculate courses using your new orbital computer.  Each calculation costs 1 fuel."
+    ]
+  ]
+
+end
+
+to capture-autonavs [ship-capturing-autonavs autonavs-being-captured]
+
+  if not any? autonavs with [owner = ship-capturing-autonavs] [
+    ask autonavs-being-captured [die]
+    ask ship-capturing-autonavs [set autonav? true]
+    if [player? = true] of ship-capturing-autonavs [
+      user-message "Your AutoNav will now hold you stable versus planetary gravity."
+    ]
+  ]
+
+end
+
 
 to capture-shield [ship-capturing-shield shield-being-captured]
 
@@ -751,13 +1039,26 @@ end
 to capture-harvester [ship-capturing-harvester harvester-being-captured]
 
   carefully [
-    ask ship-capturing-harvester [
-      if fuel >= 25 [set fuel fuel - 25]
-    ]
+    if [owner] of harvester-being-captured != ship-capturing-harvester [
+      ask ship-capturing-harvester [
 
-    ask harvester-being-captured [
-      set color [color] of ship-capturing-harvester
-      set owner ship-capturing-harvester
+        if fuel >= 25 [
+          set fuel fuel - 25
+
+          ask harvester-being-captured [
+            set color [color] of ship-capturing-harvester
+            set owner ship-capturing-harvester
+          ]
+
+          if [player? = true] of ship-capturing-harvester [
+            user-message "You have captured this harvester!  Capturing harvesters cost 25 fuel."
+          ]
+
+          ask ship-capturing-harvester [fd 2]
+
+        ]
+
+      ]
     ]
   ][]
 
@@ -918,10 +1219,10 @@ NIL
 1
 
 BUTTON
-834
-208
-929
-241
+794
+210
+925
+243
 Fire Missile!
 launch-missile one-of ships with [player? = true]
 NIL
@@ -943,11 +1244,28 @@ number-of-planets
 number-of-planets
 1
 5
-5.0
+1.0
 1
 1
 planet
 HORIZONTAL
+
+BUTTON
+794
+242
+925
+275
+Calculate Courses
+calculate-courses
+NIL
+1
+T
+OBSERVER
+NIL
+C
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1249,6 +1567,14 @@ line half
 true
 0
 Line -7500403 true 150 0 150 150
+
+orbital-computer
+true
+0
+Circle -7500403 true true 116 11 67
+Circle -7500403 true true 26 176 67
+Circle -7500403 true true 206 176 67
+Circle -7500403 false true 45 45 210
 
 pentagon
 false
